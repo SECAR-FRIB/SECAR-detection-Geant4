@@ -10,6 +10,8 @@ neutronInput/*.txt
 cadFiles/
 *.stl
 git_sync.sh
+useful_codes/*.txt
+useful_codes/TotalEfficiencyCalc.cpp
 
 # OS/editor junk
 .DS_Store
