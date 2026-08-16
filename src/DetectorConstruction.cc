@@ -68,6 +68,8 @@ DetectorConstruction::~DetectorConstruction(){}
 
 G4VPhysicalVolume* DetectorConstruction::Construct()
 {
+  analysis->ConfigureDetectorOutput(DSSD, IC, Si_monitor);
+
   G4NistManager* nist = G4NistManager::Instance();
 
   G4Material* vacuum = nist->FindOrBuildMaterial("G4_Galactic");
@@ -227,8 +229,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   G4Sphere* Sphere = new G4Sphere("Sphere_solid", innerRadiusOfTheSphere, outerRadiusOfTheSphere, 0.0, 360*deg, 0.0, 180*deg);
   G4LogicalVolume* logical_Sphere = new G4LogicalVolume(Sphere, vacuum, "Sphere_log", 0, 0, 0);
   if(source) new G4PVPlacement(0, G4ThreeVector(0,0,-29*mm), logical_Sphere, "Sphere_phys", logical_world, false, 0, true);
-  // else new G4PVPlacement(0, G4ThreeVector(0,0,0), logical_Sphere, "Sphere_phys", logical_world, false, 0, true);
-  // logical_Sphere->SetVisAttributes(G4Color::Yellow());
+  else new G4PVPlacement(0, G4ThreeVector(0,0,0), logical_Sphere, "Sphere_phys", logical_world, false, 0, true);
+  logical_Sphere->SetVisAttributes(G4Color::Yellow());
 
   if(chamber)
   {
@@ -481,7 +483,7 @@ void DetectorConstruction::NeutronDetectorsMap()
 {
   if(LScin)
   {
-    LScinMap.open("../detectorMap/LScin.dat",std::ios::in);
+    LScinMap.open("../detectorMap/LScin_12.dat",std::ios::in);
     if (LScinMap.is_open()) G4cout<<"The LScinMap external file is open!"<<G4endl;
     while (true) 
     {
@@ -507,5 +509,4 @@ void DetectorConstruction::NeutronDetectorsMap()
     analysis->SetNeutronDetectors(LScinNum);
   }
 }
-
 

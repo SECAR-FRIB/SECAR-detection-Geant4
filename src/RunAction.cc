@@ -33,16 +33,16 @@
 #include "G4UnitsTable.hh"
 #include "G4ios.hh"
 #include "G4Run.hh"
-#include "G4RunManager.hh"
 
 RunAction::RunAction(AnalysisManager* analysis)
 { 
-  //G4RunManager::GetRunManager()->SetPrintProgress(10000);
   analysisMan = analysis;  
 }
 
 RunAction::~RunAction()
-{}
+{
+  //delete G4AnalysisManager::Instance();
+}
 
 void RunAction::BeginOfRunAction(const G4Run* aRun)
 {

@@ -31,16 +31,12 @@
 #ifndef EventAction_h
 #define EventAction_h 1
 
-// General Geant4 libraries
 #include "G4UserEventAction.hh"
 #include "globals.hh"
 #include "G4ThreeVector.hh"
 
-
-//C++ Stuff
+#include <unordered_map>
 #include <vector>
-#include <fstream>
-#include <iostream>
 
 class AnalysisManager;
 class DetectorConstruction;
@@ -48,102 +44,82 @@ class DetectorConstruction;
 class EventAction : public G4UserEventAction
 {
 public:
-
   EventAction(AnalysisManager*, DetectorConstruction*);
-  ~EventAction();
+  ~EventAction() override = default;
 
-  virtual void  BeginOfEventAction(const G4Event* evt);
-  virtual void    EndOfEventAction(const G4Event* evt);
+  void BeginOfEventAction(const G4Event* evt) override;
+  void EndOfEventAction(const G4Event* evt) override;
 
+  // ---- called from SteppingAction ----
+  void AddTargetNeutron(G4int trackID, G4int parentID,
+                        G4double ekin,
+                        const G4ThreeVector& dir,
+                        const G4ThreeVector& pos,
+                        G4double tof);
 
-  
-  void AddTarget(G4int z, G4int a, G4double e, G4double de, G4ThreeVector pos, G4ThreeVector ang, G4double e_str, G4ThreeVector pos_str, G4ThreeVector ang_str, G4double dt, G4double e_n, G4double th_n)
-  {
-    TarZ = z; 
-    TarA = a; 
-    TarEnergy = e;
-    TarEdep += de;
-    TarPosX = pos.x(); 
-    TarPosY = pos.y(); 
-    TarPosZ = pos.z(); 
-    TarTheta = ang.theta(); 
-    TarPhi = ang.phi(); 
-    TarToF = dt;
-    Tar_n_e = e_n;
-    Tar_n_theta = th_n;
+  void AddLSDetected(G4int detID, G4int trackID, G4int parentID,
+                     G4int Z, G4int A,
+                     G4double edep, G4double tof);
 
-    StripEnergy = e_str;
-    StripPosX = pos_str.x(); 
-    StripPosY = pos_str.y(); 
-    StripPosZ = pos_str.z(); 
-    StripTheta = ang_str.theta(); 
-    StripPhi = ang_str.phi(); 
-
-  };
-
-  void AddLSDetected(G4int i, G4double de, G4int z, G4int a)
-  { 
-    LSEdep[i] += de; 
-    Z[i] = z; 
-    A[i] = a; 
-  };
-
-  void AddLSEntryHit(G4int i, G4double e, G4double dt, G4int z, G4int a, G4ThreeVector pos, G4ThreeVector ang, G4double e_nt, G4double th_nt)
-  { 
-    LSEkin[i] = e; 
-    LSToF[i] = dt; 
-    ZZ[i] = z; 
-    AA[i] = a; 
-    LSPosX[i] = pos.x(); 
-    LSPosY[i] = pos.y(); 
-    LSPosZ[i] = pos.z(); 
-    LSTheta[i] = ang.theta(); 
-    LSPhi[i] = ang.phi();
-    Tar_n_e = e_nt;
-    Tar_n_theta = th_nt;
-  };
-
-  void AddEvent(G4double e_rt, G4double th_rt, G4double e_nt, G4double th_nt, G4int i, G4double e, G4double t, G4int z, G4int a, G4ThreeVector pos, G4ThreeVector ang, G4double de)
-  {
-    TarEnergy = e_rt;
-    TarTheta = th_rt; 
-    Tar_n_e = e_nt;
-    Tar_n_theta = th_nt;
-
-    LSEkin[i] = e; 
-    LSToF[i] = t; 
-    ZZ[i] = z; 
-    AA[i] = a; 
-    LSPosX[i] = pos.x(); 
-    LSPosY[i] = pos.y(); 
-    LSPosZ[i] = pos.z(); 
-    LSTheta[i] = ang.theta(); 
-    LSPhi[i] = ang.phi();
-
-    LSEdep[i] += de;
-  };
+  void AddLSNeutronCrossing(G4int detID, G4int trackID, G4int parentID,
+                            G4double ekin, G4double tof,
+                            const G4ThreeVector& pos,
+                            const G4ThreeVector& dir);
 
 private:
-      
-  AnalysisManager* analysis;
-  DetectorConstruction* detector;
+  AnalysisManager* analysis = nullptr;
+  DetectorConstruction* detector = nullptr;
 
-  G4double TarPosX, TarPosY, TarPosZ, TarTheta, TarPhi, TarEnergy, TarEdep, TarToF, Tar_n_e, Tar_n_theta;
-  G4int TarZ, TarA; 
-  G4double StripPosX, StripPosY, StripPosZ, StripTheta, StripPhi, StripEnergy;
+  // ------------ Target neutron per-track record ------------
+  struct TargetRecord {
+    bool hasTarget = false;
 
-  G4double primaryKE;
+    G4int trackID  = -1;
+    G4int parentID = -1;
 
-  typedef std::vector<G4double> DVec;
-  DVec LSPosX, LSPosY, LSPosZ, LSTheta, LSPhi; 
-  DVec LSEkin, LSEdep, LSToF;
-  
-  typedef std::vector<G4int> IVec;
-  IVec Z, A, ZZ, AA;
+    G4double ekin_tar = 0.0;
+    G4ThreeVector dir_tar;
+  };
 
-  G4int LScinNum;
-  G4bool LScin;
+  std::unordered_map<G4int, TargetRecord> fTargetByTrack;
+  std::vector<G4int> fTargetOrder;
+
+  // ------------ LS per (detID, trackID) record ------------
+  struct LSHitRecord {
+    G4int detID   = -1;
+    G4int trackID = -1;
+    G4int parentID = -1;
+
+    // detected energy (sum over steps)
+    G4double edep_sum = 0.0;
+
+    G4int Z_dep = 0;
+    G4int A_dep = 0;
+
+    bool hasDep   = false;
+  };
+
+  // encode (detID, trackID) into one key for unordered_map
+  static inline std::uint64_t LSKey(G4int detID, G4int trackID) {
+    return (std::uint64_t(std::uint32_t(detID)) << 32) | std::uint32_t(trackID);
+  }
+
+  std::unordered_map<std::uint64_t, LSHitRecord> fLSByKey;
+  std::vector<std::uint64_t> fLSOrder; // stable iteration
+
+  struct NeutronCrossingRecord {
+    G4int detID = -1;
+    G4int trackID = -1;
+    G4int parentID = -1;
+    G4double ekin = 0.0;
+    G4double tof = 0.0;
+    G4ThreeVector pos;
+    G4ThreeVector dir;
+  };
+  std::unordered_map<std::uint64_t, NeutronCrossingRecord> fCrossings;
+  std::vector<std::uint64_t> fCrossingOrder;
 };
+
 #endif
 
     

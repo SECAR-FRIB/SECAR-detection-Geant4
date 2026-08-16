@@ -31,167 +31,139 @@
 #include "EventAction.hh"
 #include "AnalysisManager.hh"
 #include "DetectorConstruction.hh"
-#include "G4SystemOfUnits.hh"
+
 #include "G4Event.hh"
-#include "G4RunManager.hh"
-#include "G4RunManagerFactory.hh"
-#include <vector>
-#include <fstream> 
-#include <iostream>
+#include <algorithm>
 
 EventAction::EventAction(AnalysisManager* analysisMan, DetectorConstruction* det)
-  :G4UserEventAction(),
-   detector(det)
+: G4UserEventAction(),
+  analysis(analysisMan),
+  detector(det)
+{}
+
+void EventAction::BeginOfEventAction(const G4Event*)
 {
-  analysis = analysisMan;
-  LScinNum = detector->GetLScinNum();
-  LScin = detector->LScinOn();
+  fTargetByTrack.clear();
+  fTargetOrder.clear();
 
-  if(LScin)
+  fLSByKey.clear();
+  fLSOrder.clear();
+  fCrossings.clear();
+  fCrossingOrder.clear();
+}
+
+void EventAction::AddLSNeutronCrossing(G4int detID, G4int trackID, G4int parentID,
+                                       G4double ekin, G4double tof,
+                                       const G4ThreeVector& pos,
+                                       const G4ThreeVector& dir)
+{
+  const auto key = LSKey(detID, trackID);
+  if (fCrossings.find(key) != fCrossings.end()) return;
+
+  NeutronCrossingRecord record;
+  record.detID = detID;
+  record.trackID = trackID;
+  record.parentID = parentID;
+  record.ekin = ekin;
+  record.tof = tof;
+  record.pos = pos;
+  record.dir = dir;
+  fCrossings.emplace(key, record);
+  fCrossingOrder.push_back(key);
+}
+
+// ---------- Target/strip recorders ----------
+void EventAction::AddTargetNeutron(G4int trackID, G4int parentID, G4double ekin, const G4ThreeVector& dir, const G4ThreeVector& pos, G4double tof)
+{
+  auto it = fTargetByTrack.find(trackID);
+  if (it == fTargetByTrack.end())
   {
-    for(G4int i = 0; i<LScinNum; i++)
-    {
-      LSEkin.push_back(0.0); 
-      LSToF.push_back(0.0);
-      ZZ.push_back(0);
-      AA.push_back(0); 
-      LSPosX.push_back(0.0);
-      LSPosY.push_back(0.0); 
-      LSPosZ.push_back(0.0); 
-      LSTheta.push_back(0.0); 
-      LSPhi.push_back(0.0); 
-
-      LSEdep.push_back(0.0);
-      Z.push_back(0);
-      A.push_back(0);
-    }
-  }
-  
-  TarZ = 0;
-  TarA = 0;
-  TarEnergy = 0.0;
-  TarEdep = 0.0;
-  TarPosX = 0.0;
-  TarPosY = 0.0; 
-  TarPosZ = 0.0;
-  TarTheta = 0.0; 
-  TarPhi = 0.0;
-  TarToF = 0.0;
-  Tar_n_e = 0.0;
-  Tar_n_theta = 0.0;
-
-  StripEnergy = 0.0;
-  StripPosX = 0.0; 
-  StripPosY = 0.0; 
-  StripPosZ = 0.0; 
-  StripTheta = 0.0; 
-  StripPhi = 0.0; 
-}
-
-EventAction::~EventAction(){}
-
-void EventAction::BeginOfEventAction(const G4Event* evt)
-{ 
-  if(LScin)
-  {  
-    for(G4int i = 0; i<LScinNum; i++)
-    {
-      std::fill(LSEkin.begin(),LSEkin.end(),0.0);  
-      std::fill(LSToF.begin(),LSToF.end(),0.0); 
-      std::fill(ZZ.begin(),ZZ.end(),0);    
-      std::fill(AA.begin(),AA.end(),0); 
-      std::fill(LSPosX.begin(),LSPosX.end(),0.0); 
-      std::fill(LSPosY.begin(),LSPosY.end(),0.0); 
-      std::fill(LSPosZ.begin(),LSPosZ.end(),0.0); 
-      std::fill(LSTheta.begin(),LSTheta.end(),0.0); 
-      std::fill(LSPhi.begin(),LSPhi.end(),0.0); 
-
-      std::fill(LSEdep.begin(),LSEdep.end(),0.0);   
-      std::fill(Z.begin(),Z.end(),0);    
-      std::fill(A.begin(),A.end(),0); 
-    }
+    TargetRecord rec;
+    rec.trackID = trackID;
+    rec.parentID = parentID;
+    fTargetOrder.push_back(trackID);
+    it = fTargetByTrack.emplace(trackID, rec).first;
   }
 
-  TarZ = 0;
-  TarA = 0;
-  TarEnergy = 0.0;
-  TarEdep = 0.0;
-  TarPosX = 0.0;
-  TarPosY = 0.0; 
-  TarPosZ = 0.0;
-  TarTheta = 0.0; 
-  TarPhi = 0.0;
-  TarToF = 0.0;
-  Tar_n_e = 0.0;
-  Tar_n_theta = 0.0;
+  auto& rec = it->second;
+  if (rec.hasTarget) return;
 
-  StripEnergy = 0.0;
-  StripPosX = 0.0; 
-  StripPosY = 0.0; 
-  StripPosZ = 0.0; 
-  StripTheta = 0.0; 
-  StripPhi = 0.0; 
-
-  G4PrimaryVertex* primaryVertex = evt->GetPrimaryVertex();
-  G4PrimaryParticle* primaryParticle = primaryVertex->GetPrimary();
-  primaryKE = primaryParticle->GetKineticEnergy();
-
+  rec.hasTarget = true;
+  rec.ekin_tar = ekin;
+  rec.dir_tar  = dir;
 }
 
+void EventAction::AddLSDetected(G4int detID, G4int trackID, G4int parentID, G4int Z_, G4int A_, G4double edep, G4double /*tof*/)
+{
+  const auto key = LSKey(detID, trackID);
+
+  auto it = fLSByKey.find(key);
+  if (it == fLSByKey.end())
+  {
+    LSHitRecord r;
+    r.detID = detID;
+    r.trackID = trackID;
+    r.parentID = parentID;
+    fLSOrder.push_back(key);
+    it = fLSByKey.emplace(key, r).first;
+  }
+
+  auto& r = it->second;
+  r.hasDep = true;
+  r.edep_sum += edep;
+  r.Z_dep = Z_;
+  r.A_dep = A_;
+}
+
+// ---------- End of event: write per-track TargetTrack + per-hit LSHitTrack ----------
 void EventAction::EndOfEventAction(const G4Event* evt)
 {
-  G4int event = evt->GetEventID();
-  // Target tree
-  if(TarEnergy>0.0) {
-    // if(TarZ==11) G4cout<<TarEnergy<<" "<<primaryKE<<G4endl;
-    analysis->Target(TarZ, TarA, TarEnergy, TarEdep, TarPosX, TarPosY, TarPosZ, TarTheta, TarPhi, StripEnergy, StripPosX, StripPosY, StripPosZ, StripTheta, StripPhi, TarToF, Tar_n_e, Tar_n_theta);
-  }
-  
-  if(LScin)
+  const G4int eventID = evt->GetEventID();
+
+  // 1) per-track target/strip record
+  for (const auto trackID : fTargetOrder)
   {
-    for(G4int i = 0; i<LScinNum; i++) 
-    {
-      // Timing resolution obtained from source spectra with gamma rays
-      G4double sigmaT = 1.1;  
-      LSToF[i] = G4RandGauss::shoot(LSToF[i], sigmaT);
+    const auto it = fTargetByTrack.find(trackID);
+    if (it == fTargetByTrack.end()) continue;
 
-      // Target - LS coincidence tree
-      if(LSEdep[i]>0.01) // || LSEkin[i]>0.0) 
-      {  
-        if(Z[i]==1 && A[i]==1){
-          // G4cout<<event<<"\t"<<i<<"\t"<<primaryKE<<"\t"<<Tar_n_e<<"\t"<<Tar_n_theta<<"\t"<<LSEdep[i]<<G4endl;
-          if(LSEdep[i]>0.1) analysis->Target_LS_coinc(TarEnergy, TarTheta, Tar_n_e, Tar_n_theta, LSEkin, LSToF, ZZ, AA, LSPosX, LSPosY, LSPosZ, LSTheta, LSPhi, LSEdep);
-        }
-        else if(Z[i]==6) {
-          if(LSEdep[i]>3.00) analysis->Target_LS_coinc(TarEnergy, TarTheta, Tar_n_e, Tar_n_theta, LSEkin, LSToF, ZZ, AA, LSPosX, LSPosY, LSPosZ, LSTheta, LSPhi, LSEdep);
-        }
-        else if (Z[i]<1 && A[i]<1){
-          if(LSEdep[i]>0.01) analysis->Target_LS_coinc(TarEnergy, TarTheta, Tar_n_e, Tar_n_theta, LSEkin, LSToF, ZZ, AA, LSPosX, LSPosY, LSPosZ, LSTheta, LSPhi, LSEdep);
-        } 
-      }
-
-      // LS hit tree
-      if(LSEkin[i]>0.0) {
-        analysis->Reached_LS(LSEkin, LSToF, ZZ, AA, LSPosX, LSPosY, LSPosZ, LSTheta, LSPhi, Tar_n_e, Tar_n_theta);
-      }
-
-      // LS detection tree
-      if(Z[i]==1 && A[i]==1) //for protons
-      {
-        if(LSEdep[i]>0.1) {
-          analysis->Detected_LS(LSEdep, Z, A);
-        }
-      }
-      else if(Z[i]==6) {  //for carbon 
-        if(LSEdep[i]>3.00) {
-          analysis->Detected_LS(LSEdep, Z, A);
-        }
-      }
-      //else if (Z[i]<1 && A[i]<1) //for gammas and electrons
-      //analysis->Detected_LS(LSEdep, Z, A); 
-    }
+    const TargetRecord& r = it->second;
+    if (!r.hasTarget) continue;
+    analysis->TargetTrack(eventID, r.trackID, r.ekin_tar,
+                          r.dir_tar.theta(), r.dir_tar.phi());
   }
 
-}   
+  for (const auto key : fCrossingOrder)
+  {
+    const auto it = fCrossings.find(key);
+    if (it == fCrossings.end()) continue;
+    const auto& n = it->second;
+    analysis->LSNeutronCrossing(eventID, n.detID, n.trackID, n.parentID,
+                                n.ekin, n.tof,
+                                n.pos.x(), n.pos.y(), n.pos.z(),
+                                n.dir.theta(), n.dir.phi());
+  }
 
+  // 2) per (detID, trackID) LS hit record
+  for (const auto key : fLSOrder)
+  {
+    const auto it = fLSByKey.find(key);
+    if (it == fLSByKey.end()) continue;
 
+    const LSHitRecord& h = it->second;
+
+    // Optional: only write if there was some deposit
+    // if (!h.hasDep) continue;
+
+    // Write ONLY if total deposited energy for that (detID,trackID) is above threshold
+    const G4double LS_TOTAL_EDEP_THR = 0.001; // choose your threshold in MeV (or whatever units you're using)
+    if (!h.hasDep) continue;
+    if (h.edep_sum < LS_TOTAL_EDEP_THR) continue;
+    
+    analysis->LSHitTrack(eventID,
+                         h.detID,
+                         h.trackID,
+                         h.parentID,
+                         h.edep_sum,
+                         h.Z_dep, h.A_dep);
+  }
+}

@@ -262,13 +262,13 @@ void TotalEfficiencyCalc()
     mg->GetYaxis()->SetTitle("Efficiency (%)");
 
     canvas->Update();
-    sprintf(save_name,"/Users/pelytsintari/Projects/SECAR/neutrons/SECAR_GEANT/bld/neutrons/4pi/totalEff_LS%d_Kornilov.root",LS);
+    sprintf(save_name,"bld/neutrons/4pi/totalEff_LS%d_Kornilov.root",LS);
     TFile *fout = new TFile(save_name, "RECREATE");
     
     mg->Write();
     graph->Write();
 
-    sprintf(save_name,"/Users/pelytsintari/Projects/SECAR/neutrons/SECAR_GEANT/bld/neutrons/4pi/totalEff_LS%d_Kornilov.png",LS);
+    sprintf(save_name,"bld/neutrons/4pi/totalEff_LS%d_Kornilov.png",LS);
     canvas->SaveAs(save_name);
     
     return canvas;

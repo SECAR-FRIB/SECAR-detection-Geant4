@@ -34,6 +34,8 @@
 #include "globals.hh"
 #include "AnalysisManager.hh"
 
+#include <fstream>
+
 class G4Box;
 class G4Tubs;
 class G4LogicalVolume;
@@ -61,15 +63,15 @@ private:
 	AnalysisManager* analysis;
 
     //Enable your detectors
-    G4bool chamber = true;
+    G4bool chamber = false;
     G4bool source = false; // !! To use 4Pi emmision change also in PrimaryGeneratorAction.hh !!
     // When source is false all of the covering material is set to vaccum, thus one can still get what was 
     // emmitted from the target location.
-    G4bool target = true;
-    G4bool Si_monitor = true;
+    G4bool target = false;
+    G4bool Si_monitor = false;
     G4bool stripper = false;
-    G4bool LScin = false;
-    G4bool coverLS = false;
+    G4bool LScin = true;
+    G4bool coverLS = true;
     G4bool MCP = false;
     G4bool IC = false;
         G4double gas_thick_one = 12.7; //12.7*mm;
@@ -104,6 +106,5 @@ private:
     
 };
 #endif
-
 
 

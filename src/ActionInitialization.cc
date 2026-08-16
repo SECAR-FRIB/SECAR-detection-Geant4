@@ -49,10 +49,7 @@ ActionInitialization::~ActionInitialization()
 
 void ActionInitialization::BuildForMaster() const
 {
-	// In MT mode, to be clearer, the RunAction class for the master thread might be
-	// different than the one used for the workers.
-	// This RunAction will be called before and after starting the
-	// workers.
+	SetUserAction(new RunAction(analysis));
 }
 
 void ActionInitialization::Build() const
@@ -70,6 +67,6 @@ SetUserAction(event);
 
 SteppingAction* stepping = new SteppingAction(event, detector, analysis);
 SetUserAction(stepping);
+
 	
 }  
-

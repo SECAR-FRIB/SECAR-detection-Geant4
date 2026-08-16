@@ -111,7 +111,6 @@ void SensitiveDetector_SiMon::EndOfEvent(G4HCofThisEvent*)
   } 
   G4double sigmaE = 0.01;
   totalEdep = G4RandGauss::shoot(totalEdep, sigmaE); 
-  if(totalEdep>0.1) analysis->Detector_IC(totalEdep, Ekin, A, Z);   
+  if(totalEdep>0.1) analysis->Detector_SiMon(totalEdep, Ekin, A, Z);
 }
-
 

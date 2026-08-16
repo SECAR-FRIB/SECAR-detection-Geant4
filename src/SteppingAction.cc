@@ -31,111 +31,162 @@
 #include "AnalysisManager.hh"
 #include "EventAction.hh"
 #include "DetectorConstruction.hh" 
-#include "G4ios.hh"
-#include "G4SteppingManager.hh"
+#include "TrackInfo.hh"
+
+//#include "G4ios.hh"
+//#include "G4SteppingManager.hh"
 #include "G4Step.hh"
 #include "G4Track.hh"
-#include "G4ParticleTypes.hh"
+//#include "G4ParticleTypes.hh"
 #include "G4ParticleDefinition.hh"
 #include "G4StepPoint.hh"
 #include "G4StepStatus.hh"
 #include "G4VTouchable.hh"
-#include "G4ThreeVector.hh"
+//#include "G4ThreeVector.hh"
 #include "G4VPhysicalVolume.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4VProcess.hh"
+#include "G4Neutron.hh"
+
+namespace {
+
+  inline TrackInfo* GetOrMakeTrackInfo(G4Track* t)
+  {
+    auto* info = static_cast<TrackInfo*>(t->GetUserInformation());
+    if (!info) {
+      info = new TrackInfo();
+      t->SetUserInformation(info);
+    }
+    return info;
+  }
+
+  inline bool IsNeutron(const G4Track* t) {
+    return t->GetDefinition() == G4Neutron::Definition();
+  }
+
+  inline bool IsIon(const G4Track* t) {
+    // For ions, atomic number/mass are meaningful.
+    // For neutrons/protons/gammas they are 0.
+    return t->GetDefinition()->GetParticleType() == "nucleus";
+  }
+
+inline G4int GetZ(const G4Track* t)
+{
+  const auto* def = t->GetDefinition();
+
+  // For ions
+  if (def->GetParticleType() == "nucleus")
+    return def->GetAtomicNumber();
+
+  // For baryons (proton, neutron)
+  const G4double charge = def->GetPDGCharge();   // in units of eplus
+  return (G4int)std::lround(charge / eplus);
+}
+
+inline G4int GetA(const G4Track* t)
+{
+  const auto* def = t->GetDefinition();
+
+  // For ions
+  if (def->GetParticleType() == "nucleus")
+    return def->GetAtomicMass();
+
+  // For baryons (proton, neutron)
+  return def->GetBaryonNumber();
+}
+
+  inline bool IsTargetVolumeName(const G4String& name)
+  {
+    // support both names
+    return (name == "Sphere_phys" || name == "Tar_phys");
+  }
+}
 
 SteppingAction::SteppingAction(EventAction* eventAction, DetectorConstruction* det, AnalysisManager* pAnalysis)
 : G4UserSteppingAction(),
   fEventAction(eventAction),
-  detector(det)
-{ 
-  analysis = pAnalysis; 
-}
+  detector(det),
+  analysis(pAnalysis)  
+{}
 
-SteppingAction::~SteppingAction()
-{ }
+//SteppingAction::~SteppingAction(){}
 
 void SteppingAction::UserSteppingAction(const G4Step* aStep)
 { 
+  if (!aStep) return;
+  
   G4Track* aTrack = aStep -> GetTrack();
-  
+  if (!aTrack) return;
   G4StepPoint* initialPoint = aStep->GetPreStepPoint();
+  if (!initialPoint) return;
   G4VPhysicalVolume* volume = initialPoint->GetTouchableHandle()->GetVolume();
-  G4String volumeName = volume->GetName();
-  G4int Z = aTrack -> GetDynamicParticle() -> GetDefinition() -> GetPDGCharge();
-  G4int A = aTrack -> GetDynamicParticle() -> GetDefinition() -> GetBaryonNumber(); 
-  // particleName = aTrack->GetDefinition()->GetParticleName();
-  // G4StepPoint* finalPoint = aStep->GetPostStepPoint();
-  // G4int parentID = aTrack->GetParentID();
-  // aTrack->SetTrackStatus(fStopAndKill);
+  if (!volume) return;
+
+  const G4String volumeName = volume->GetName();
+
+  // Track metadata / kinematics at this step
+  auto* info = GetOrMakeTrackInfo(aTrack);
+
+  const G4int trackID  = aTrack->GetTrackID();
+  const G4int parentID = aTrack->GetParentID();
+
+  const G4ThreeVector pos = initialPoint->GetPosition();
+  const G4ThreeVector dir = aTrack->GetMomentumDirection();
+  const G4double ekin      = aTrack->GetKineticEnergy();
+  const G4double tof       = aTrack->GetGlobalTime();
+
+  const bool neutron = IsNeutron(aTrack);
+  const bool ion     = IsIon(aTrack);
+
+  const G4int Z = GetZ(aTrack);
+  const G4int A = GetA(aTrack);
   
-  // if(volumeName=="Sphere_phys");
-  if(volumeName=="Tar_phys") {
-    tarEdep = aStep->GetTotalEnergyDeposit();
-    hitTarPos = initialPoint->GetPosition();
-    tarDirection = aTrack->GetMomentumDirection();
-    // tarEkin = aTrack->GetKineticEnergy();
-    tarEkin = aStep->GetPostStepPoint()->GetKineticEnergy();
-  }
-  if(volumeName=="Strip_phys")
+  // ------------------------------------------------------------
+  // 1) TARGET: "what is produced at target" (source or reaction)
+  // Record ONCE per track when it is in target volume.
+  // This works for:
+  //   - primaries spawned inside target
+  //   - particles entering target
+  //   - secondaries born inside target
+  // ------------------------------------------------------------
+  if (IsTargetVolumeName(volumeName))
   {
-    G4ThreeVector hitStripPos = initialPoint->GetPosition();
-    G4ThreeVector stripDirection = aTrack->GetMomentumDirection();
-    stripEkin = aStep->GetPostStepPoint()->GetKineticEnergy();
-    G4double tarToF = aTrack->GetGlobalTime();
-    tarEdep = aStep->GetTotalEnergyDeposit();
-    // if(Z==11) G4cout<<tarEkin<<G4endl;
-    if(Z==0&&A==1) { // check for neutrons
-      theta_n_tar = tarDirection.theta(); ekin_n_tar = tarEkin;
-      //ekin_r_tar = 0.0; theta_r_tar = 0.0; 
-
-      //Comment out the following line if doing a reaction and invoke next if statement
-      // if(theta_n_tar<0.6)fEventAction->AddTarget(Z, A, tarEkin, hitTarPos, tarDirection, tarToF, ekin_n_tar, theta_n_tar); 
+    if (!info->recordedTarget)
+    {
+      info->recordedTarget = true;
+      // Store a "target record" per track
+      if (neutron)
+      {
+        fEventAction->AddTargetNeutron(trackID, parentID, ekin, dir, pos, tof);
+      }
     }
-    else {theta_n_tar = 0.0; ekin_n_tar = 0.0; }
-    //if(A==58) { // (Z==27 && A==58) store the recoil 
-    // ekin_r_tar = tarEkin; theta_r_tar = tarDirection.theta(); 
-
-    //The ekin_n_tar and theta_n_tar data stored here are not useful since they can be distinguished from Z,A 
-    //I am keeping this format for now though not efficient
-    if(Z!=36) {fEventAction->AddTarget(Z, A, tarEkin, tarEdep, hitTarPos, tarDirection, stripEkin, hitStripPos, stripDirection, tarToF, ekin_n_tar, theta_n_tar); }
-  }
-
+  }  
+  // ------------------------------------------------------------
+  // 3) LIQUID SCINTILLATORS
+  // Record entry kinematics at boundary; record edep per step
+  // Use trackID for later correlation (no single “neutron at target” scalars).
+  // ------------------------------------------------------------
   // Flag for turning on/off the Liquid Scintillators. 
   // It is controlled from the header file of the DetectorConstruction 
-  if(detector->LScinOn()) 
+  if (detector && detector->LScinOn())
   { 
-    G4int LScinNum = detector->GetLScinNum();
+    const G4int LScinNum = detector->GetLScinNum();
     for(int i=0; i<LScinNum; i++)
     {
-      G4double edep=0.0;
-      if (volume == detector->GetLScin(i))
-      {
-        if(initialPoint->GetStepStatus() == fGeomBoundary)
-        {
-          G4ThreeVector hitPos = initialPoint->GetPosition();
-          G4ThreeVector direction = aTrack->GetMomentumDirection();
-          G4double ekin = initialPoint->GetKineticEnergy(); 
-          G4double tof = aTrack->GetGlobalTime();
-          // G4double tof = aTrack->GetLocalTime(); // Use this tof when simulating a source
+      if (volume != detector->GetLScin(i)) continue;
+      if (neutron && initialPoint->GetStepStatus() == fGeomBoundary && ekin > 0.0001)
+        fEventAction->AddLSNeutronCrossing(i, trackID, parentID, ekin, tof, pos, dir);
 
-          if(ekin>0.0001) 
-          {
-            ekin_LS = ekin; tof_LS = tof; hitPos_LS = hitPos; direction_LS = direction;
-            fEventAction->AddLSEntryHit(i, ekin_LS, tof_LS, Z, A, hitPos_LS, direction_LS, ekin_n_tar, theta_n_tar); 
-          }
-        }
+      // Accumulate energy deposition for THIS track in THIS LS
+      const G4double edep = aStep->GetTotalEnergyDeposit();
+      if (edep <= 0.0) continue;
 
-        edep = aStep->GetTotalEnergyDeposit();
+      // Detect charged particles (includes ions, protons, electrons, etc.)
+      //const G4double q = aTrack->GetDefinition()->GetPDGCharge();
+      if (Z == 0) continue;
 
-        if(edep>0.001) // a very low threshold per step
-        {
-          fEventAction->AddLSDetected(i,edep,Z,A);
-          fEventAction->AddEvent(ekin_r_tar, theta_r_tar, ekin_n_tar, theta_n_tar, i, ekin_LS, tof_LS, Z, A, hitPos_LS, direction_LS, edep);
-        }
-      }
+      // IMPORTANT: no per-step threshold here; accumulate everything
+      fEventAction->AddLSDetected(i, trackID, parentID, Z, A, edep, tof);
     }
   }
 }
-

@@ -3,6 +3,8 @@ bld_recoil/
 bld_neut_eff/
 bld_src/
 bld_reac/
+bld_Sc44/
+*.root
 neutronInput/pn_distributions/
 neutronInput/*.txt
 cadFiles/

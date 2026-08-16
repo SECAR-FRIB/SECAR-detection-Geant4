@@ -31,45 +31,27 @@
 #define SteppingAction_h 1
 
 #include "G4UserSteppingAction.hh"
-#include "G4EventManager.hh"
-#include "G4ios.hh"
+//#include "G4EventManager.hh"
+//#include "G4ios.hh"
 #include "globals.hh"
-#include "AnalysisManager.hh"
+//#include "AnalysisManager.hh"
 
 class G4Step;
 class EventAction;
 class DetectorConstruction;
-
+class AnalysisManager;
 
 class SteppingAction: public G4UserSteppingAction
 {
 public:
  SteppingAction( EventAction* eventAction, DetectorConstruction* det, AnalysisManager* pAnalysis);
- ~SteppingAction();
+ ~SteppingAction() override = default;
 
- void UserSteppingAction(const G4Step* aStep);
+ void UserSteppingAction(const G4Step* aStep) override;
 
 private: 
- EventAction* fEventAction;
- DetectorConstruction* detector;
- AnalysisManager* analysis;
-
- //G4String particleName;
- //G4String process;
- G4ThreeVector tarDirection;
- G4ThreeVector hitTarPos;
- G4double theta_n_tar;
- G4double ekin_n_tar;
- G4double theta_r_tar;
- G4double ekin_r_tar;
- G4double tarEkin;
- G4double tarEdep;
- G4double stripEkin;
-
- G4ThreeVector hitPos_LS;
- G4ThreeVector direction_LS;
- G4double ekin_LS;
- G4double tof_LS;
-
+ EventAction* fEventAction  = nullptr;
+ DetectorConstruction* detector  = nullptr;
+ AnalysisManager* analysis  = nullptr;
 };
 #endif

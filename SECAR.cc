@@ -71,8 +71,9 @@ int main(int argc, char** argv)
   G4int seed = time( NULL );
   G4Random::setTheSeed( seed );
 
-  auto* pRunManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Default);
+  G4RunManager* pRunManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Default);
   // pRunManager->SetNumberOfThreads(1);
+
   // User action initialization
   AnalysisManager* analysisMan = new AnalysisManager();
 
@@ -108,13 +109,13 @@ int main(int argc, char** argv)
     ui->SessionStart();
     delete ui;
   }    
-  delete visManager;
-  delete pRunManager; 
-  //delete analysisMan; 
-
+  
   //Stop the time benchmark here
   theTimer->Stop();
   G4cout << "The simulation took: " << theTimer->GetRealElapsed()/60 << " m to run (real time)"<< G4endl;
 
+  
+  delete visManager; 
+  delete pRunManager;
   return 0;
 }

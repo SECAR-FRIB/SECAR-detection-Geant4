@@ -36,6 +36,8 @@
 #include "AnalysisManager.hh"
 #include "DetectorConstruction.hh"
 
+#include <fstream>
+
 using namespace std; 
 
 
@@ -50,6 +52,9 @@ PrimaryGeneratorAction(AnalysisManager*);
 
 virtual void GeneratePrimaries(G4Event* anEvent);
 void OpenExternalFile();
+private:
+    void SmearIfRewound(G4double& energy_n, G4double& theta_n);
+    bool ReadNeutronRow(G4double& energy_n, G4double& theta_n, bool& rewound);
 
 // method to access particle gun
 G4ParticleGun* GetParticleGun() {return fParticleGun;};
@@ -59,8 +64,9 @@ AnalysisManager* analysis;
 G4GeneralParticleSource* gps;
 G4ParticleGun*  fParticleGun;
 G4bool source = false;
-G4bool pn_neutrons = false;
-G4bool pn_recoils = false;
+G4bool neutron = true;
+G4bool two_neutrons = false;
+G4bool ions = false;
 ifstream input_file;
 G4int n;
 
